@@ -133,6 +133,7 @@ function scrapeTrademarkData(serialNumber) {
           .replace(/<script[\\s\\S]*?<\\/script>/gi, "")
           .replace(/<style[\\s\\S]*?<\\/style>/gi, "")
           .replace(/<[^>]+>/g, " ")
+          .replace(/<[^>]*$/g, " ")
           .replace(/&amp;/g, "&")
           .replace(/&nbsp;/g, " ")
           .replace(/&#39;/g, "'")
@@ -624,7 +625,7 @@ const parseSerials = (input: string): string[] =>
   Array.from(
     new Set(
       input
-        .split(/[\\s,;\\n]+/)
+        .split(/[\s,;\n]+/)
         .map((s) => s.trim().replace(/\\D/g, ""))
         .filter((s) => s.length >= 7 && s.length <= 9)
     )
@@ -836,21 +837,46 @@ export default function App() {
       "Confidence", "Needs Review", "TSDR Link"
     ];
 
-    const escape = (v: unknown) => `"${cleanCell(v).replace(/"/g, '""')}"`;
+    // RFC-4180-style CSV escaping. Every value is quoted and internal quotes are doubled.
+    const escape = (v: unknown) => {
+      const value = String(v ?? "")
+        .replace(/\r\n/g, " ")
+        .replace(/[\r\n]/g, " ")
+        .trim();
+      return `"${value.replace(/"/g, '""')}"`;
+    };
 
-    const lines = rows.map((r) =>
-      [
-        escape(r.serialNumber), escape(r.mark), escape(r.status), escape(r.internationalClass),
-        escape(r.goodsServices), escape(r.filingDate), escape(r.statusDate), escape(r.ownerName),
-        escape(r.ownerAddress), escape(r.entityType), escape(r.stateOrCountry), escape(r.markType),
-        escape(r.register), escape(r.basis), escape(r.tm5Status), escape(r.markDescription),
-        escape(r.disclaimer), r.hasAttorney ? "Yes" : "No", escape(r.attorneyName),
-        escape(r.correspondentName), escape(r.correspondentAddress), escape(r.phone), escape(r.email),
-        escape(r.confidence), r.needsReview ? "Yes" : "No", escape(getTsdrLink(r.serialNumber))
-      ].join(",")
-    );
+    const lines = rows.map((r) => [
+      r.serialNumber,
+      r.mark,
+      r.status,
+      r.internationalClass,
+      r.goodsServices,
+      r.filingDate,
+      r.statusDate,
+      r.ownerName,
+      r.ownerAddress,
+      r.entityType,
+      r.stateOrCountry,
+      r.markType,
+      r.register,
+      r.basis,
+      r.tm5Status,
+      r.markDescription,
+      r.disclaimer,
+      r.hasAttorney ? "Yes" : "No",
+      r.attorneyName,
+      r.correspondentName,
+      r.correspondentAddress,
+      r.phone,
+      r.email,
+      r.confidence,
+      r.needsReview ? "Yes" : "No",
+      getTsdrLink(r.serialNumber)
+    ].map(escape).join(","));
 
-    const csv = "\\ufeff" + [headers.join(","), ...lines].join("\\r\\n");
+    // IMPORTANT: use real BOM and real CRLF characters, not the literal strings "\\ufeff" / "\\r\\n".
+    const csv = "\uFEFF" + [headers.map(escape).join(","), ...lines].join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
